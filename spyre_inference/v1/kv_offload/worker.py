@@ -36,15 +36,30 @@ class SpyreOffloadingWorker(OffloadingWorker):
         self._pool = pool
         self._copier = SpyreKvDmaCopier()
 
+    def _slot_id(self, block_id: int, tensor_id: int) -> int:
+        """
+        Get the slot id for a given block id.
+        """
+        return block_id * len(self._kv_caches.tensors) + tensor_id
+
+    def _transfer(self, host_spec: LoadStoreSpec, gpu_spec: LoadStoreSpec, to_device: bool) -> None:
+        """
+        Start an async copy for host to device or device to host.
+        """
+        copy_func = self._copier.copy_h2d if to_device else self._copier.copy_d2h
+        for dev_blk_id, host_blk_id in zip(gpu_spec.block_ids, host_spec.block_ids):
+            for tensor_id, cache in enumerate(self._kv_caches.tensors):
+                copy_func(
+                    cache.tensor[dev_blk_id], self._pool, self._slot_id(host_blk_id, tensor_id)
+                )
+
     def submit_store(
         self, job_id: int, src_spec: GPULoadStoreSpec, dst_spec: LoadStoreSpec
     ) -> bool:
         """
         Start an async copy for device to host.
         """
-        for device_blk_id, slot_id in zip(src_spec.block_ids, dst_spec.block_ids):
-            self._copier.copy_d2h(self._kv_caches[device_blk_id], self._pool, slot_id)
-
+        self._transfer(dst_spec, src_spec, to_device=False)
         self._finished_jobs.append(TransferResult(job_id=job_id, success=True))
         return True
 
@@ -52,9 +67,7 @@ class SpyreOffloadingWorker(OffloadingWorker):
         """
         Start an async copy for host to device.
         """
-        for slot_id, device_blk_id in zip(src_spec.block_ids, dst_spec.block_ids):
-            self._copier.copy_h2d(self._kv_caches[device_blk_id], self._pool, slot_id)
-
+        self._transfer(src_spec, dst_spec, to_device=True)
         self._finished_jobs.append(TransferResult(job_id=job_id, success=True))
         return True
 

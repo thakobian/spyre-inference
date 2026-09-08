@@ -15,9 +15,6 @@
 import pytest
 import torch
 from spyre_inference.v1.kv_offload.connector import spyre_paged_to_canonical
-from torch.testing._internal.common_utils import (
-    TestCase,
-)
 from torch_spyre._C import SharedHostPool  # type: ignore[attr-defined]
 from vllm.v1.kv_cache_interface import FullAttentionSpec, KVCacheConfig, KVCacheGroupSpec
 from vllm.v1.kv_offload.base import CanonicalKVCaches, GPULoadStoreSpec
@@ -77,31 +74,61 @@ def pool() -> SharedHostPool:
     return SharedHostPool.create_or_attach(POOL_NAME, NUM_BLOCKS * NUM_TENSORS, NUM_BLOCKS)
 
 
-class TestKVOffloadWorker(TestCase):
-    def test_copy_h2d(self, kv_cache: CanonicalKVCaches, pool: SharedHostPool):
-        worker = SpyreOffloadingWorker(kv_cache, pool)
-        host_spec = CPULoadStoreSpec(block_ids=HOST_BLOCKS)
-        gpu_spec = GPULoadStoreSpec(DEV_BLOCKS, group_sizes=[len(DEV_BLOCKS)], block_indices=[0])
+@pytest.fixture
+def gpu_spec() -> GPULoadStoreSpec:
+    return GPULoadStoreSpec(DEV_BLOCKS, group_sizes=[len(DEV_BLOCKS)], block_indices=[0])
 
-        # Arbitrary job_id for testing.
-        job_id = 42
 
-        # Test storing device blocks 1 and 2 to host blocks 0 and 3.
-        assert worker.submit_store(job_id, host_spec, gpu_spec) is True
-        assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
+@pytest.fixture
+def host_spec() -> CPULoadStoreSpec:
+    return CPULoadStoreSpec(block_ids=HOST_BLOCKS)
 
-        # Close kv_cache to then compare the host tensors to the original canonical tensors.
-        expected = [cache.tensor.clone() for cache in kv_cache.tensors]
 
-        # Now fill the kv_cache tensors at DEV_BLOCKS with 0s so then we can copy back.
-        for block_cache in kv_cache.tensors:
-            for dev_blk_id in DEV_BLOCKS:
-                block_cache.tensor[dev_blk_id].fill_(0)
+def test_submit_store_and_load(
+    kv_cache: CanonicalKVCaches,
+    pool: SharedHostPool,
+    gpu_spec: GPULoadStoreSpec,
+    host_spec: CPULoadStoreSpec,
+):
+    worker = SpyreOffloadingWorker(kv_cache, pool)
 
-        # Test loading host blocks 0 and 3 from device blocks 1 and 2.
-        assert worker.submit_load(job_id, host_spec, gpu_spec) is True
-        assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
+    # Arbitrary job_id for testing.
+    job_id = 42
 
-        # Now the kv_cache tensors at DEV_BLOCKS should match the original canonical tensors.
-        for cache, expected_cache in zip(kv_cache.tensors, expected):
-            assert torch.equal(cache.tensor, expected_cache)
+    # Test storing device blocks 1 and 2 to host blocks 0 and 3.
+    assert worker.submit_store(job_id, host_spec, gpu_spec) is True
+    assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
+
+    # Clone kv_cache to then compare the host tensors to the original canonical tensors.
+    expected = [cache.tensor.clone() for cache in kv_cache.tensors]
+
+    # Now fill the kv_cache tensors at DEV_BLOCKS with 0s so then we can copy back.
+    for block_cache in kv_cache.tensors:
+        for dev_blk_id in DEV_BLOCKS:
+            block_cache.tensor[dev_blk_id].fill_(0)
+
+    # Test loading host blocks 0 and 3 from device blocks 1 and 2.
+    assert worker.submit_load(job_id, host_spec, gpu_spec) is True
+    assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
+
+    # Check kv_cache tensors at DEV_BLOCKS should match the original canonical tensors.
+    for cache, expected_cache in zip(kv_cache.tensors, expected):
+        assert torch.equal(cache.tensor, expected_cache)
+
+
+def test_get_finished_drains(
+    kv_cache: CanonicalKVCaches,
+    pool: SharedHostPool,
+    gpu_spec: GPULoadStoreSpec,
+    host_spec: CPULoadStoreSpec,
+):
+    worker = SpyreOffloadingWorker(kv_cache, pool)
+
+    # Submit a store job.
+    assert worker.submit_store(1, host_spec, gpu_spec) is True
+
+    # Check that get_finished() returns the finished job.
+    assert [job.job_id for job in worker.get_finished()] == [1]
+
+    # After calling get_finished(), the finished jobs list should be drained.
+    assert worker.get_finished() == []

@@ -56,7 +56,7 @@ class SpyreOffloadingWorker(OffloadingWorker):
         self, job_id: int, host_spec: LoadStoreSpec, gpu_spec: GPULoadStoreSpec, to_device: bool
     ) -> bool:
         """
-        Run a transfer job.
+        Run the transfer job and record the result.
         """
         try:
             self._transfer(host_spec, gpu_spec, to_device=to_device)

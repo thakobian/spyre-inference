@@ -23,9 +23,6 @@ from vllm.v1.kv_offload.base import (
 
 from spyre_inference.v1.kv_offload.copier import SpyreKvDmaCopier
 
-# M1-S1: In progress on other branch:
-
-
 logger = init_logger(__name__)
 
 
@@ -42,9 +39,11 @@ class SpyreOffloadingWorker(OffloadingWorker):
         """
         return block_id * len(self._kv_caches.tensors) + tensor_id
 
-    def _transfer(self, host_spec: LoadStoreSpec, gpu_spec: LoadStoreSpec, to_device: bool) -> None:
+    def _transfer(
+        self, host_spec: LoadStoreSpec, gpu_spec: GPULoadStoreSpec, to_device: bool
+    ) -> None:
         """
-        Start an async copy for host to device or device to host.
+        Copy for host to device or device to host.
         """
         copy_func = self._copier.copy_h2d if to_device else self._copier.copy_d2h
         for dev_blk_id, host_blk_id in zip(gpu_spec.block_ids, host_spec.block_ids):

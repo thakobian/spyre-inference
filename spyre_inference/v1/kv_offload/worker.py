@@ -52,23 +52,38 @@ class SpyreOffloadingWorker(OffloadingWorker):
                     cache.tensor[dev_blk_id], self._pool, self._slot_id(host_blk_id, tensor_id)
                 )
 
+    def _run(
+        self, job_id: int, host_spec: LoadStoreSpec, gpu_spec: GPULoadStoreSpec, to_device: bool
+    ) -> bool:
+        """
+        Run a transfer job.
+        """
+        try:
+            self._transfer(host_spec, gpu_spec, to_device=to_device)
+            self._finished_jobs.append(TransferResult(job_id=job_id, success=True))
+
+        except Exception:
+            logger.exception("Failed to run job %d", job_id)
+            self._finished_jobs.append(TransferResult(job_id=job_id, success=False))
+
+        # Report the job was accepted. We would only return False if the job was
+        # rejected due to resource constraints, but this implementation does not
+        # have such constraints.
+        return True
+
     def submit_store(
         self, job_id: int, src_spec: GPULoadStoreSpec, dst_spec: LoadStoreSpec
     ) -> bool:
         """
         Start an async copy for device to host.
         """
-        self._transfer(dst_spec, src_spec, to_device=False)
-        self._finished_jobs.append(TransferResult(job_id=job_id, success=True))
-        return True
+        return self._run(job_id, dst_spec, src_spec, to_device=False)
 
     def submit_load(self, job_id: int, src_spec: LoadStoreSpec, dst_spec: GPULoadStoreSpec) -> bool:
         """
         Start an async copy for host to device.
         """
-        self._transfer(src_spec, dst_spec, to_device=True)
-        self._finished_jobs.append(TransferResult(job_id=job_id, success=True))
-        return True
+        return self._run(job_id, src_spec, dst_spec, to_device=True)
 
     def get_finished(self) -> list[TransferResult]:
         """

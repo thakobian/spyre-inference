@@ -14,12 +14,12 @@
 
 import pytest
 import torch
-from spyre_inference.v1.kv_offload.connector import spyre_paged_to_canonical
 from torch_spyre._C import SharedHostPool  # type: ignore[attr-defined]
 from vllm.v1.kv_cache_interface import FullAttentionSpec, KVCacheConfig, KVCacheGroupSpec
 from vllm.v1.kv_offload.base import CanonicalKVCaches, GPULoadStoreSpec
 from vllm.v1.kv_offload.cpu.common import CPULoadStoreSpec
 
+from spyre_inference.v1.kv_offload.connector import spyre_paged_to_canonical
 from spyre_inference.v1.kv_offload.worker import SpyreOffloadingWorker
 
 NUM_BLOCKS = 4
@@ -46,7 +46,10 @@ def _spec() -> FullAttentionSpec:
 def _paged_cache() -> tuple[torch.Tensor, torch.Tensor]:
     """A stand-in for SpyrePagedKVCache: a 2-tuple of dense page tensors."""
     shape = (NUM_BLOCKS, BLOCK_SIZE, NUM_KV_HEADS, HEAD_SIZE)
-    return (torch.zeros(shape, dtype=torch.float16), torch.zeros(shape, dtype=torch.float16))
+    return (
+        torch.zeros(shape, dtype=torch.float16, device="spyre"),
+        torch.zeros(shape, dtype=torch.float16, device="spyre"),
+    )
 
 
 def _config(layer_names, spec) -> KVCacheConfig:
@@ -71,7 +74,7 @@ def kv_cache() -> CanonicalKVCaches:
 @pytest.fixture
 def pool() -> SharedHostPool:
     # NUM_BLOCKS * NUM_TENSORS is the total number of slots in the pool.
-    return SharedHostPool.create_or_attach(POOL_NAME, NUM_BLOCKS * NUM_TENSORS, NUM_BLOCKS)
+    return SharedHostPool.create_or_attach(POOL_NAME, NUM_BLOCKS * NUM_TENSORS, PAGE_BYTES)
 
 
 @pytest.fixture
@@ -113,7 +116,7 @@ def test_submit_store_and_load(
 
     # Check kv_cache tensors at DEV_BLOCKS should match the original canonical tensors.
     for cache, expected_cache in zip(kv_cache.tensors, expected):
-        assert torch.equal(cache.tensor, expected_cache)
+        assert torch.equal(cache.tensor.to("cpu"), expected_cache.to("cpu"))
 
 
 def test_get_finished_drains(

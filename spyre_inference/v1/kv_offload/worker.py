@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import torch
 from vllm.logger import init_logger
 from vllm.v1.kv_offload.base import (
     GPULoadStoreSpec,
@@ -33,6 +33,11 @@ class SpyreOffloadingWorker(OffloadingWorker):
         self._pool = pool
         self._copier = SpyreKvDmaCopier()
 
+        # TODO: We are currently using a temporary tensor to store the data in
+        # kv cache because copy h2d or d2h doesn't support copying directly
+        # from/to the kv cache tensor. The direct copy is being worked on.
+        self._temp = torch.empty_like(kv_caches.tensors[0].tensor[0], device="spyre")
+
     def _slot_id(self, block_id: int, tensor_id: int) -> int:
         """
         Get the slot id for a given block id.
@@ -45,12 +50,15 @@ class SpyreOffloadingWorker(OffloadingWorker):
         """
         Copy for host to device or device to host.
         """
-        copy_func = self._copier.copy_h2d if to_device else self._copier.copy_d2h
         for dev_blk_id, host_blk_id in zip(gpu_spec.block_ids, host_spec.block_ids):
             for tensor_id, cache in enumerate(self._kv_caches.tensors):
-                copy_func(
-                    cache.tensor[dev_blk_id], self._pool, self._slot_id(host_blk_id, tensor_id)
-                )
+                slot_id = self._slot_id(host_blk_id, tensor_id)
+                if to_device:
+                    self._copier.copy_h2d(self._temp, self._pool, slot_id)
+                    cache.tensor[dev_blk_id].copy_(self._temp)
+                else:
+                    self._temp.copy_(cache.tensor[dev_blk_id])
+                    self._copier.copy_d2h(self._temp, self._pool, slot_id)
 
     def _run(
         self, job_id: int, host_spec: LoadStoreSpec, gpu_spec: GPULoadStoreSpec, to_device: bool

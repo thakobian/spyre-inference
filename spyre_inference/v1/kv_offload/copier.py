@@ -18,7 +18,7 @@ import torch
 from torch_spyre._C import (  # type: ignore[attr-defined]
     SharedHostPool,
     copy_tensor_raw,
-    get_composite_address_handle,
+    get_composite_address,
 )
 
 
@@ -55,7 +55,7 @@ class SpyreKvDmaCopier:
     @staticmethod
     def slot_bytes_for(dev_tensor: torch.Tensor) -> int:
         """Bytes a pool slot must hold to back ``dev_tensor``'s device allocation."""
-        return get_composite_address_handle(dev_tensor).total_size
+        return get_composite_address(dev_tensor).total_size
 
     @staticmethod
     def create_or_attach_pool(name: str, num_slots: int, slot_bytes: int) -> SharedHostPool:

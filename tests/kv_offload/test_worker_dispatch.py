@@ -120,7 +120,7 @@ def test_submit_store_and_load(
 
     # Check kv_cache tensors at DEV_BLOCKS should match the original canonical tensors.
     for cache, expected_cache in zip(kv_cache.tensors, expected):
-        assert torch.equal(cache.tensor, expected_cache)
+        assert torch.equal(cache.tensor.to("cpu"), expected_cache.to("cpu"))
 
 
 def test_get_finished_drains(

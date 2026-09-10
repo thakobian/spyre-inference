@@ -46,7 +46,10 @@ def _spec() -> FullAttentionSpec:
 def _paged_cache() -> tuple[torch.Tensor, torch.Tensor]:
     """A stand-in for SpyrePagedKVCache: a 2-tuple of dense page tensors."""
     shape = (NUM_BLOCKS, BLOCK_SIZE, NUM_KV_HEADS, HEAD_SIZE)
-    return (torch.zeros(shape, dtype=torch.float16), torch.zeros(shape, dtype=torch.float16))
+    return (
+        torch.zeros(shape, dtype=torch.float16, device="spyre"),
+        torch.zeros(shape, dtype=torch.float16, device="spyre"),
+    )
 
 
 def _config(layer_names, spec) -> KVCacheConfig:
@@ -96,7 +99,7 @@ def test_submit_store_and_load(
     job_id = 42
 
     # Test storing device blocks 1 and 2 to host blocks 0 and 3.
-    assert worker.submit_store(job_id, host_spec, gpu_spec) is True
+    assert worker.submit_store(job_id, gpu_spec, host_spec) is True
     assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
 
     # Clone kv_cache to then compare the host tensors to the original canonical tensors.
@@ -105,10 +108,8 @@ def test_submit_store_and_load(
     # Now fill the kv_cache tensors at DEV_BLOCKS with 0s so then we can copy back.
     for block_cache in kv_cache.tensors:
         for dev_blk_id in DEV_BLOCKS:
-            block_cache.tensor[dev_blk_id].fill_(0)
-
-    for i, t in enumerate(kv_cache.tensors):
-        print(f"after zero  tensor {i}: {t.tensor.to('cpu')[:, 0].tolist()}")
+            zeroes = torch.zeros_like(block_cache.tensor[dev_blk_id])
+            block_cache.tensor[dev_blk_id].copy_(zeroes)
 
     # Test loading host blocks 0 and 3 from device blocks 1 and 2.
     assert worker.submit_load(job_id, host_spec, gpu_spec) is True
@@ -116,7 +117,7 @@ def test_submit_store_and_load(
 
     # Check kv_cache tensors at DEV_BLOCKS should match the original canonical tensors.
     for cache, expected_cache in zip(kv_cache.tensors, expected):
-        assert torch.equal(cache.tensor, expected_cache)
+        assert torch.equal(cache.tensor.to("cpu"), expected_cache.to("cpu"))
 
 
 def test_get_finished_drains(

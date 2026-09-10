@@ -108,7 +108,8 @@ def test_submit_store_and_load(
     # Now fill the kv_cache tensors at DEV_BLOCKS with 0s so then we can copy back.
     for block_cache in kv_cache.tensors:
         for dev_blk_id in DEV_BLOCKS:
-            block_cache.tensor[dev_blk_id].fill_(0)
+            zeroes = torch.zeros_like(block_cache.tensor[dev_blk_id])
+            block_cache.tensor[dev_blk_id].copy_(zeroes)
 
     for i, t in enumerate(kv_cache.tensors):
         print(f"after zero  tensor {i}: {t.tensor.to('cpu')[:, 0].tolist()}")

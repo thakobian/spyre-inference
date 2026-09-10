@@ -46,7 +46,10 @@ def _spec() -> FullAttentionSpec:
 def _paged_cache() -> tuple[torch.Tensor, torch.Tensor]:
     """A stand-in for SpyrePagedKVCache: a 2-tuple of dense page tensors."""
     shape = (NUM_BLOCKS, BLOCK_SIZE, NUM_KV_HEADS, HEAD_SIZE)
-    return (torch.zeros(shape, dtype=torch.float16), torch.zeros(shape, dtype=torch.float16))
+    return (
+        torch.zeros(shape, dtype=torch.float16, device="spyre"),
+        torch.zeros(shape, dtype=torch.float16, device="spyre"),
+    )
 
 
 def _config(layer_names, spec) -> KVCacheConfig:

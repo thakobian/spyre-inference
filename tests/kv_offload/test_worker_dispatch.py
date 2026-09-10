@@ -96,7 +96,7 @@ def test_submit_store_and_load(
     job_id = 42
 
     # Test storing device blocks 1 and 2 to host blocks 0 and 3.
-    assert worker.submit_store(job_id, host_spec, gpu_spec) is True
+    assert worker.submit_store(job_id, gpu_spec, host_spec) is True
     assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
 
     # Clone kv_cache to then compare the host tensors to the original canonical tensors.

@@ -107,6 +107,9 @@ def test_submit_store_and_load(
         for dev_blk_id in DEV_BLOCKS:
             block_cache.tensor[dev_blk_id].fill_(0)
 
+    for i, t in enumerate(kv_cache.tensors):
+        print(f"after zero  tensor {i}: {t.tensor.to('cpu')[:, 0].tolist()}")
+
     # Test loading host blocks 0 and 3 from device blocks 1 and 2.
     assert worker.submit_load(job_id, host_spec, gpu_spec) is True
     assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]

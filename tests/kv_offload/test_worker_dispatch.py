@@ -113,6 +113,7 @@ def test_submit_store_and_load(
     # Test loading host blocks 0 and 3 from device blocks 1 and 2.
     assert worker.submit_load(job_id, host_spec, gpu_spec) is True
     assert [(job.job_id, job.success) for job in worker.get_finished()] == [(job_id, True)]
+    print("device:", kv_cache.tensors[0].tensor.device)
 
     # Check kv_cache tensors at DEV_BLOCKS should match the original canonical tensors.
     for cache, expected_cache in zip(kv_cache.tensors, expected):

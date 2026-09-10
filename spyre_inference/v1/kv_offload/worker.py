@@ -59,6 +59,7 @@ class SpyreOffloadingWorker(OffloadingWorker):
                     cache.tensor[dev_blk_id].copy_(self._temp)
                 else:
                     self._temp.copy_(cache.tensor[dev_blk_id])
+                    print("temp after read", slot_id, self._temp.to("cpu").flatten()[0].item())
                     self._copier.copy_d2h(self._temp, self._pool, slot_id)
 
     def _run(

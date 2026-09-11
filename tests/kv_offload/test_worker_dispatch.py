@@ -74,7 +74,7 @@ def kv_cache() -> CanonicalKVCaches:
 @pytest.fixture
 def pool() -> SharedHostPool:
     # NUM_BLOCKS * NUM_TENSORS is the total number of slots in the pool.
-    return SharedHostPool.create_or_attach(POOL_NAME, NUM_BLOCKS * NUM_TENSORS, NUM_BLOCKS)
+    return SharedHostPool.create_or_attach(POOL_NAME, NUM_BLOCKS * NUM_TENSORS, PAGE_BYTES)
 
 
 @pytest.fixture
